@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Слух — отвечайте на карточки голосом</title>
+<style>
+:root{
+  --bg:#EEF1F5; --surface:#FFFFFF; --ink:#1B2430; --muted:#5C6878; --line:#D5DBE4;
+  --accent:#2F4BD8; --accent-ink:#FFFFFF;
+  --again:#C8374A; --hard:#A86C05; --good:#1E7F6F; --easy:#2F4BD8;
+  --ok:#1E7F6F; --bad:#C8374A; --wash:#E4E9F1;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10151D; --surface:#19212C; --ink:#E7ECF3; --muted:#9AA7B8; --line:#2B3645;
+    --accent:#7C93FF; --accent-ink:#0E1320;
+    --again:#FF7A8A; --hard:#E3A93B; --good:#4CC6AE; --easy:#7C93FF;
+    --ok:#4CC6AE; --bad:#FF7A8A; --wash:#202A38;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10151D; --surface:#19212C; --ink:#E7ECF3; --muted:#9AA7B8; --line:#2B3645;
+  --accent:#7C93FF; --accent-ink:#0E1320;
+  --again:#FF7A8A; --hard:#E3A93B; --good:#4CC6AE; --easy:#7C93FF;
+  --ok:#4CC6AE; --bad:#FF7A8A; --wash:#202A38;
+}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px);}
+*,*::before,*::after{box-sizing:border-box;}
+[hidden]{display:none !important;}
+body{
+  margin:0;min-height:100%;background:var(--bg);color:var(--ink);
+  font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-text-size-adjust:100%;
+}
+#app{max-width:560px;margin:0 auto;padding:12px 16px 40px;}
+button,input,select,textarea{font:inherit;color:inherit;}
+button{cursor:pointer;}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px;}
+
+.top{display:flex;align-items:center;justify-content:space-between;padding:6px 0 14px;}
+.brand{font-weight:700;font-size:1.15rem;letter-spacing:.01em;}
+.top-actions{display:flex;gap:4px;}
+.ghost{background:none;border:0;padding:10px 12px;border-radius:10px;color:var(--muted);min-height:44px;}
+.ghost:hover{background:var(--wash);}
+.primary,.secondary{min-height:52px;padding:12px 20px;border-radius:14px;border:1px solid transparent;font-weight:600;}
+.primary{background:var(--accent);color:var(--accent-ink);}
+.secondary{background:var(--surface);border-color:var(--line);}
+.big{width:100%;font-size:1.05rem;}
+
+h1{font-size:1.9rem;line-height:1.15;margin:8px 0 10px;}
+.lead{color:var(--muted);margin:0 0 18px;max-width:46ch;}
+.note{color:var(--muted);font-size:.9rem;margin:14px 0 0;}
+.diag{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:0 0 16px;font-size:.92rem;}
+.diag div{display:flex;justify-content:space-between;gap:12px;padding:3px 0;}
+.diag .k{color:var(--muted);}
+.diag .v.ok{color:var(--ok);font-weight:600;}
+.diag .v.bad{color:var(--bad);font-weight:600;}
+.diag p{margin:8px 0 0;color:var(--muted);}
+
+.progress{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.9rem;margin-bottom:14px;}
+.bar{flex:1;height:6px;background:var(--wash);border-radius:99px;overflow:hidden;}
+.bar>i{display:block;height:100%;width:0;background:var(--accent);transition:width .25s ease;}
+
+.prompt{font-size:1.45rem;line-height:1.3;font-weight:600;margin:6px 0 22px;min-height:2.6em;}
+.listen{display:flex;flex-direction:column;align-items:center;text-align:center;}
+.mic{position:relative;width:104px;height:104px;border-radius:50%;background:var(--surface);border:2px solid var(--line);display:grid;place-items:center;margin:4px 0 12px;}
+.mic .dot{width:34px;height:34px;border-radius:50%;background:var(--muted);}
+.mic .ring{position:absolute;inset:-2px;border-radius:50%;border:2px solid var(--accent);opacity:0;}
+.mic[data-state="listening"]{border-color:var(--accent);}
+.mic[data-state="listening"] .dot{background:var(--accent);}
+.mic[data-state="listening"] .ring{animation:pulse 1.4s ease-out infinite;}
+.mic[data-state="heard"] .dot{background:var(--ok);}
+.mic[data-state="error"] .dot{background:var(--bad);}
+@keyframes pulse{0%{transform:scale(1);opacity:.7}100%{transform:scale(1.5);opacity:0}}
+@media (prefers-reduced-motion: reduce){.mic[data-state="listening"] .ring{animation:none;opacity:.6;}.bar>i{transition:none;}}
+.status{min-height:1.5em;color:var(--muted);}
+.status.err{color:var(--bad);}
+.live{min-height:2.4em;font-size:1.1rem;margin:6px 0 10px;overflow-wrap:anywhere;}
+.row{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;width:100%;}
+.typebox{display:flex;gap:8px;width:100%;margin-top:10px;}
+.typebox input{flex:1;min-width:0;min-height:52px;padding:10px 14px;border-radius:14px;border:1px solid var(--line);background:var(--surface);}
+
+.result{margin-top:4px;}
+.answer{font-family:Georgia,"Iowan Old Style","Times New Roman",serif;font-size:1.65rem;line-height:1.3;margin:0 0 10px;overflow-wrap:anywhere;}
+.heard{font-size:1.05rem;margin:0 0 14px;overflow-wrap:anywhere;}
+.heard .lbl{color:var(--muted);margin-right:6px;}
+.heard .ok{color:var(--ok);}
+.heard .bad{color:var(--bad);text-decoration:underline wavy;text-underline-offset:3px;}
+.heard .miss{color:var(--muted);background:var(--wash);border-radius:6px;padding:0 5px;font-size:.92em;}
+.metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:0 0 14px;}
+.metrics div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:8px 10px;}
+.metrics dt{font-size:.78rem;color:var(--muted);}
+.metrics dd{margin:0;font-weight:700;font-size:1.1rem;}
+.reason{color:var(--muted);font-size:.92rem;margin:0 0 8px;}
+.grades{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px;}
+.grade{min-height:50px;border-radius:12px;border:2px solid var(--line);background:var(--surface);font-weight:600;font-size:.95rem;padding:6px 2px;}
+.grade[data-g="1"]{--c:var(--again);} .grade[data-g="2"]{--c:var(--hard);} .grade[data-g="3"]{--c:var(--good);} .grade[data-g="4"]{--c:var(--easy);}
+.grade[aria-pressed="true"]{border-color:var(--c);color:var(--c);background:var(--wash);}
+.result .row .primary{flex:1;}
+
+.sheet{position:fixed;inset:0;background:rgba(10,14,20,.55);display:flex;align-items:flex-end;justify-content:center;z-index:10;}
+.sheet-body{background:var(--bg);width:100%;max-width:560px;max-height:92%;overflow:auto;border-radius:20px 20px 0 0;padding:16px 16px calc(24px + env(safe-area-inset-bottom,0px));}
+.sheet-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.sheet-head h2{margin:0;font-size:1.2rem;}
+.field{display:block;margin:12px 0;}
+.field>span{display:block;font-size:.92rem;color:var(--muted);margin-bottom:4px;}
+.field input[type=number],.field select,.field textarea{width:100%;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);}
+.field textarea{min-height:170px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88rem;}
+.check{display:flex;gap:10px;align-items:center;margin:10px 0;}
+.check input{width:22px;height:22px;}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.hint{color:var(--muted);font-size:.88rem;margin:4px 0 0;}
+.hint.err{color:var(--bad);}
+#btnMicTest{margin-bottom:10px;}
+
+.logitem{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;font-size:.92rem;}
+.logitem b{font-weight:600;}
+.logitem .m{color:var(--muted);}
+.sum{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:14px 0;}
+.sum div{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center;}
+.sum strong{display:block;font-size:1.4rem;}
+</style>
+</head>
+<body>
+<main id="app">
+  <header class="top">
+    <div class="brand">Слух</div>
+    <div class="top-actions">
+      <button id="btnLog" class="ghost" type="button">Журнал</button>
+      <button id="btnSettings" class="ghost" type="button">Настройки</button>
+    </div>
+  </header>
+
+  <section id="screenStart">
+    <h1>Отвечайте вслух</h1>
+    <p class="lead">Вы видите фразу по-русски и произносите перевод по-французски. Приложение слушает, сверяет ответ с эталоном и предлагает оценку по точности и скорости.</p>
+    <div class="diag" id="diag" aria-live="polite"></div>
+    <button id="btnMicTest" class="secondary big" type="button">Проверить микрофон</button>
+    <p class="hint" id="micTestMsg" role="status"></p>
+    <button id="btnStart" class="primary big" type="button" style="margin-top:10px">Начать</button>
+    <p class="note">Это проверочная версия: она нужна, чтобы выяснить, насколько хорошо браузер понимает ваш французский. После десяти карточек откройте «Журнал» и пришлите мне его содержимое — по нему я подберу пороги оценок.</p>
+  </section>
+
+  <section id="screenCard" hidden>
+    <div class="progress"><span id="progText"></span><div class="bar"><i id="progBar"></i></div></div>
+    <div class="prompt" id="promptText"></div>
+
+    <div id="listenArea" class="listen">
+      <div class="mic" id="mic" data-state="idle"><span class="ring"></span><span class="dot"></span></div>
+      <div id="micStatus" class="status" role="status"></div>
+      <div id="liveText" class="live" lang="fr"></div>
+      <div class="row">
+        <button id="btnRetry" class="secondary" type="button" hidden>Повторить</button>
+        <button id="btnSkip" class="ghost" type="button">Не знаю</button>
+        <button id="btnMode" class="ghost" type="button">Ответить текстом</button>
+      </div>
+      <div id="typeBox" class="typebox" hidden>
+        <input id="typeInput" type="text" lang="fr" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ответ по-французски">
+        <button id="btnTypeSubmit" class="primary" type="button">Проверить</button>
+      </div>
+    </div>
+
+    <div id="resultArea" class="result" hidden>
+      <p class="answer" id="answerText" lang="fr"></p>
+      <p class="heard" id="heardText" lang="fr"></p>
+      <dl class="metrics">
+        <div><dt>Точность</dt><dd id="mScore">—</dd></div>
+        <div><dt>Начало ответа</dt><dd id="mLatency">—</dd></div>
+        <div><dt>Всего</dt><dd id="mTotal">—</dd></div>
+      </dl>
+      <p class="reason" id="reasonText"></p>
+      <div class="grades" role="group" aria-label="Оценка карточки">
+        <button class="grade" data-g="1" type="button" aria-pressed="false">Снова</button>
+        <button class="grade" data-g="2" type="button" aria-pressed="false">Трудно</button>
+        <button class="grade" data-g="3" type="button" aria-pressed="false">Хорошо</button>
+        <button class="grade" data-g="4" type="button" aria-pressed="false">Легко</button>
+      </div>
+      <div class="row">
+        <button id="btnSpeak" class="secondary" type="button">Послушать</button>
+        <button id="btnNext" class="primary" type="button">Дальше</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="screenDone" hidden>
+    <h1>Серия окончена</h1>
+    <div class="sum" id="sumGrades"></div>
+    <p class="lead" id="sumText"></p>
+    <div class="row">
+      <button id="btnAgain" class="secondary" type="button">Ещё раз</button>
+      <button id="btnOpenLog" class="primary" type="button">Открыть журнал</button>
+    </div>
+  </section>
+</main>
+
+<div id="sheetSettings" class="sheet" hidden>
+  <div class="sheet-body" role="dialog" aria-modal="true" aria-labelledby="hSettings">
+    <div class="sheet-head"><h2 id="hSettings">Настройки</h2><button class="ghost" type="button" data-close="sheetSettings">Закрыть</button></div>
+    <label class="field"><span>Язык распознавания</span>
+      <select id="sLang"><option value="fr-FR">Французский (Франция)</option><option value="fr-BE">Французский (Бельгия)</option><option value="fr-CA">Французский (Канада)</option></select>
+    </label>
+    <div class="two">
+      <label class="field"><span>«Легко», если начали за (с)</span><input id="sEasy" type="number" min="0.5" max="30" step="0.5"></label>
+      <label class="field"><span>«Хорошо», если начали за (с)</span><input id="sGood" type="number" min="1" max="60" step="0.5"></label>
+      <label class="field"><span>«Снова», если точность ниже (%)</span><input id="sAgain" type="number" min="10" max="95" step="5"></label>
+      <label class="field"><span>Не выше «Трудно», если ниже (%)</span><input id="sHard" type="number" min="20" max="100" step="5"></label>
+    </div>
+    <p class="hint">Пороги времени заданы для фразы из 4 слов; на каждое слово сверх этого добавляется 0,3 с. Начальные значения — моё предположение, их нужно подобрать по вашему журналу.</p>
+    <label class="check"><input id="sLenient" type="checkbox"><span>Не различать é / è / ê и другие акценты при сверке</span></label>
+    <label class="check"><input id="sAutoSpeak" type="checkbox"><span>Проигрывать эталон после ответа</span></label>
+    <label class="field"><span>Колода: по строке на карточку, «по-русски | по-французски»</span><textarea id="sDeck" spellcheck="false"></textarea></label>
+    <div class="row">
+      <button id="btnDeckReset" class="secondary" type="button">Вернуть примеры</button>
+      <button id="btnSaveSettings" class="primary" type="button">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div id="sheetLog" class="sheet" hidden>
+  <div class="sheet-body" role="dialog" aria-modal="true" aria-labelledby="hLog">
+    <div class="sheet-head"><h2 id="hLog">Журнал ответов</h2><button class="ghost" type="button" data-close="sheetLog">Закрыть</button></div>
+    <div class="row" style="justify-content:flex-start;margin-bottom:8px">
+      <button id="btnCopyLog" class="primary" type="button">Скопировать всё</button>
+      <button id="btnClearLog" class="secondary" type="button">Очистить</button>
+    </div>
+    <p class="hint" id="logMsg"></p>
+    <textarea id="logBox" class="field" style="width:100%;min-height:120px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8rem;" readonly hidden></textarea>
+    <div id="logList"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- storage ---------- */
+var store = {
+  get: function(k, d){ try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch(e){ return d; } },
+  set: function(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
+};
+
+/* ---------- defaults ---------- */
+var DEFAULT_DECK = [
+  'Здравствуйте, как дела? | Bonjour, comment allez-vous ?',
+  'Я хотел бы кофе, пожалуйста. | Je voudrais un café, s\'il vous plaît.',
+  'Где находится вокзал? | Où est la gare ?',
+  'Я живу в Люксембурге. | J\'habite à Luxembourg.',
+  'Сколько это стоит? | Combien ça coûte ?',
+  'Я не понимаю. | Je ne comprends pas.',
+  'Можете повторить, пожалуйста? | Pouvez-vous répéter, s\'il vous plaît ?',
+  'Я работаю разработчиком. | Je travaille comme développeur.',
+  'Который час? | Quelle heure est-il ?',
+  'Приятно познакомиться. | Enchanté.',
+  'Мне нужна помощь. | J\'ai besoin d\'aide.'
+].join('\n');
+
+var DEFAULTS = { lang:'fr-FR', easy:2.5, good:6, again:60, hard:85, lenient:true, autoSpeak:true, deck:DEFAULT_DECK };
+var S = Object.assign({}, DEFAULTS, store.get('sluh.settings', {}));
+var GRADE_NAMES = {1:'Снова', 2:'Трудно', 3:'Хорошо', 4:'Легко'};
+
+/* ---------- helpers ---------- */
+function $(id){ return document.getElementById(id); }
+function fmtSec(ms){ return (ms/1000).toFixed(1).replace('.', ',') + ' с'; }
+function shuffle(a){ a = a.slice(); for (var i=a.length-1;i>0;i--){ var j=Math.floor(Math.random()*(i+1)); var t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+function el(tag, cls, text){ var e=document.createElement(tag); if(cls) e.className=cls; if(text!=null) e.textContent=text; return e; }
+
+function parseDeck(text){
+  var out = [];
+  String(text||'').split(/\r?\n/).forEach(function(line){
+    var p = line.split(/\s*[|\t]\s*/);
+    if (p.length >= 2 && p[0].trim() && p[1].trim()) out.push({ ru:p[0].trim(), fr:p.slice(1).join(' | ').trim() });
+  });
+  return out;
+}
+
+/* ---------- comparison ---------- */
+function keyOf(w){
+  var k = w.toLowerCase().replace(/œ/g,'oe').replace(/æ/g,'ae');
+  if (S.lenient) k = k.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  return k;
+}
+function tokens(s){
+  return String(s).replace(/[’‘`']/g,' ').split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(function(w){ return { w:w, k:keyOf(w) }; });
+}
+function align(a, b){
+  var n=a.length, m=b.length, i, j;
+  var d = []; for (i=0;i<=n;i++){ d.push(new Array(m+1).fill(0)); }
+  for (i=0;i<=n;i++) d[i][0]=i;
+  for (j=0;j<=m;j++) d[0][j]=j;
+  for (i=1;i<=n;i++) for (j=1;j<=m;j++){
+    var c = a[i-1].k===b[j-1].k ? 0 : 1;
+    d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+c);
+  }
+  var ops=[]; i=n; j=m;
+  while (i>0 || j>0){
+    if (i>0 && j>0 && d[i][j] === d[i-1][j-1] + (a[i-1].k===b[j-1].k?0:1)){
+      ops.push({ t: a[i-1].k===b[j-1].k ? 'ok' : 'sub', e:a[i-1], h:b[j-1] }); i--; j--;
+    } else if (i>0 && d[i][j] === d[i-1][j]+1){
+      ops.push({ t:'miss', e:a[i-1] }); i--;
+    } else {
+      ops.push({ t:'extra', h:b[j-1] }); j--;
+    }
+  }
+  ops.reverse();
+  return { dist:d[n][m], ops:ops };
+}
+function compare(expected, heard){
+  var a = tokens(expected), b = tokens(heard);
+  var r = align(a, b);
+  var denom = Math.max(a.length, b.length);
+  var score = denom === 0 ? 1 : Math.max(0, 1 - r.dist/denom);
+  return { score:score, ops:r.ops, nWords:a.length };
+}
+
+/* ---------- grading ---------- */
+function suggest(score, latencyMs, nWords){
+  var extra = Math.max(0, nWords - 4) * 0.3;
+  var lat = latencyMs/1000;
+  if (score*100 < S.again) return { g:1, why:'точность ' + Math.round(score*100) + '% ниже порога «Снова»' };
+  var g, speed;
+  if (lat <= S.easy + extra){ g=4; speed='быстро'; }
+  else if (lat <= S.good + extra){ g=3; speed='в обычном темпе'; }
+  else { g=2; speed='медленно'; }
+  var why = 'точность ' + Math.round(score*100) + '%, начали ' + speed + ' (' + fmtSec(latencyMs) + ')';
+  if (score*100 < S.hard && g > 2){ g = 2; why = 'точность ' + Math.round(score*100) + '% ниже порога «Хорошо», ' + speed; }
+  return { g:g, why:why };
+}
+
+/* ---------- state ---------- */
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+var deck = [], queue = [], total = 0, done = 0;
+var card = null, cardShownAt = 0, micReadyAt = null, firstSpeechAt = null, retries = 0;
+var rec = null, finalAlts = null, lastInterim = '', errorCode = null, watchdog = null;
+var typedMode = false, firstKeyAt = null;
+var sel = 3, sugg = null, cur = null; // current result
+var session = [];
+
+/* ---------- diagnostics ---------- */
+function frenchVoices(){
+  try { return (speechSynthesis.getVoices()||[]).filter(function(v){ return /^fr/i.test(v.lang); }).length; } catch(e){ return 0; }
+}
+function renderDiag(micState){
+  var box = $('diag'); box.textContent = '';
+  function row(k, v, cls){ var d=el('div'); d.appendChild(el('span','k',k)); d.appendChild(el('span','v '+(cls||''),v)); box.appendChild(d); }
+  row('Распознавание речи', SR ? 'есть' : 'нет', SR ? 'ok' : 'bad');
+  row('Защищённое соединение', window.isSecureContext ? 'да' : 'нет', window.isSecureContext ? 'ok' : 'bad');
+  var fv = frenchVoices();
+  row('Французские голоса для озвучки', fv ? String(fv) : 'не найдены', fv ? 'ok' : '');
+  var framed = false; try { framed = window.top !== window.self; } catch(e){ framed = true; }
+  row('Страница во встроенном окне', framed ? 'да' : 'нет', framed ? '' : 'ok');
+  var pol = null;
+  try { var fp = document.permissionsPolicy || document.featurePolicy; if (fp && fp.allowsFeature) pol = fp.allowsFeature('microphone'); } catch(e){}
+  if (pol !== null) row('Микрофон разрешён в этом окне', pol ? 'да' : 'нет', pol ? 'ok' : 'bad');
+  if (micState) row('Доступ к микрофону', micState, micState==='granted'?'ok':(micState==='denied'?'bad':''));
+  if (!SR){ var p=el('p',null,'Этот браузер не поддерживает распознавание речи. Используйте Chrome или Edge, либо отвечайте текстом.'); box.appendChild(p); }
+  else if (framed){ var p2=el('p',null,'Если микрофон не включится, откройте страницу по ссылке в отдельной вкладке браузера: во встроенном окне доступ к микрофону может быть заблокирован.'); box.appendChild(p2); }
+}
+function refreshDiag(){
+  renderDiag(null);
+  try {
+    if (navigator.permissions && navigator.permissions.query){
+      navigator.permissions.query({ name:'microphone' }).then(function(r){ renderDiag(r.state); }, function(){});
+    }
+  } catch(e){}
+}
+try { speechSynthesis.addEventListener('voiceschanged', refreshDiag); } catch(e){}
+
+/* ---------- screens ---------- */
+function show(id){
+  ['screenStart','screenCard','screenDone'].forEach(function(s){ $(s).hidden = (s !== id); });
+  window.scrollTo(0,0);
+}
+
+/* ---------- session ---------- */
+function startSession(){
+  deck = parseDeck(S.deck);
+  if (!deck.length){ deck = parseDeck(DEFAULT_DECK); }
+  queue = shuffle(deck).map(function(c){ return { ru:c.ru, fr:c.fr, tries:0 }; });
+  total = queue.length; done = 0; session = [];
+  show('screenCard');
+  nextCard();
+}
+function nextCard(){
+  stopRec();
+  if (!queue.length){ finishSession(); return; }
+  card = queue.shift();
+  retries = 0; typedMode = false; firstKeyAt = null; cur = null;
+  $('promptText').textContent = card.ru;
+  $('progText').textContent = (done+1 > total ? total : done+1) + ' из ' + total;
+  $('progBar').style.width = Math.round(done/total*100) + '%';
+  $('resultArea').hidden = true;
+  $('listenArea').hidden = false;
+  $('typeBox').hidden = true;
+  $('typeInput').value = '';
+  $('btnMode').textContent = 'Ответить текстом';
+  $('btnRetry').hidden = true;
+  $('liveText').textContent = '';
+  cardShownAt = performance.now();
+  startListening();
+}
+
+/* ---------- recognition ---------- */
+function setMic(state, msg, isErr){
+  $('mic').setAttribute('data-state', state);
+  var s = $('micStatus'); s.textContent = msg || ''; s.className = 'status' + (isErr ? ' err' : '');
+}
+function stopRec(){
+  clearTimeout(watchdog); watchdog = null;
+  if (rec){
+    rec.onstart = rec.onspeechstart = rec.onresult = rec.onerror = rec.onend = null;
+    try { rec.abort(); } catch(e){}
+    rec = null;
+  }
+}
+var ERR_TEXT = {
+  'not-allowed': 'Нет доступа к микрофону. Разрешите его для этого сайта или откройте страницу в отдельной вкладке.',
+  'service-not-allowed': 'Браузер не разрешил службу распознавания. Откройте страницу в отдельной вкладке.',
+  'audio-capture': 'Микрофон не найден или занят другим приложением.',
+  'network': 'Нет связи со службой распознавания. Она работает только при подключении к интернету.',
+  'no-speech': 'Речь не обнаружена.',
+  'language-not-supported': 'Выбранный язык не поддерживается этим браузером.',
+  'aborted': ''
+};
+function startListening(){
+  stopRec();
+  if (!SR){ setMic('error', 'Распознавание речи не поддерживается. Отвечайте текстом.', true); toggleTyped(true); return; }
+  finalAlts = null; lastInterim = ''; errorCode = null; micReadyAt = null; firstSpeechAt = null;
+  $('btnRetry').hidden = true; $('liveText').textContent = '';
+  var r;
+  try { r = new SR(); } catch(e){ setMic('error', 'Не удалось запустить распознавание.', true); toggleTyped(true); return; }
+  rec = r;
+  r.lang = S.lang; r.interimResults = true; r.maxAlternatives = 3; r.continuous = false;
+  setMic('idle', 'Включаю микрофон…');
+  r.onstart = function(){ clearTimeout(watchdog); micReadyAt = performance.now(); setMic('listening', 'Говорите'); };
+  r.onspeechstart = function(){ if (firstSpeechAt == null) firstSpeechAt = performance.now(); };
+  r.onresult = function(e){
+    if (firstSpeechAt == null) firstSpeechAt = performance.now();
+    var interim = '';
+    for (var i = e.resultIndex; i < e.results.length; i++){
+      var res = e.results[i];
+      if (res.isFinal){
+        var alts = [];
+        for (var k=0;k<res.length;k++){ var t = (res[k].transcript||'').trim(); if (t) alts.push(t); }
+        if (alts.length) finalAlts = alts;
+      } else { interim += res[0].transcript; }
+    }
+    if (interim) lastInterim = interim;
+    $('liveText').textContent = finalAlts ? finalAlts[0] : interim;
+  };
+  r.onerror = function(e){ errorCode = e.error || 'unknown'; };
+  r.onend = function(){
+    clearTimeout(watchdog);
+    rec = null;
+    if (typedMode) return;
+    var alts = finalAlts || (lastInterim ? [lastInterim.trim()] : null);
+    if (alts){ setMic('heard', 'Услышал'); finishAnswer(alts, 'voice'); return; }
+    var msg = errorCode ? (ERR_TEXT[errorCode] != null ? ERR_TEXT[errorCode] : 'Ошибка распознавания: ' + errorCode) : 'Речь не распознана.';
+    setMic('error', msg || 'Остановлено.', true);
+    $('btnRetry').hidden = false;
+    if (errorCode === 'not-allowed' || errorCode === 'service-not-allowed' || errorCode === 'audio-capture') toggleTyped(true);
+  };
+  try { r.start(); } catch(e){ setMic('error', 'Не удалось включить микрофон. Нажмите «Повторить».', true); $('btnRetry').hidden = false; return; }
+  watchdog = setTimeout(function(){
+    if (rec === r && micReadyAt == null){
+      stopRec();
+      setMic('error', 'Микрофон не включился за 5 секунд. Скорее всего, браузер блокирует его в этом окне. Можно ответить текстом.', true);
+      $('btnRetry').hidden = false;
+      toggleTyped(true);
+    }
+  }, 5000);
+}
+
+/* ---------- typed mode ---------- */
+function toggleTyped(force){
+  typedMode = (typeof force === 'boolean') ? force : !typedMode;
+  $('typeBox').hidden = !typedMode;
+  $('btnMode').textContent = typedMode ? 'Ответить голосом' : 'Ответить текстом';
+  if (typedMode){ stopRec(); if (SR) setMic('idle', 'Режим ввода текстом'); $('typeInput').focus(); }
+  else { retries++; startListening(); }
+}
+
+/* ---------- result ---------- */
+function finishAnswer(alts, mode){
+  var best = null;
+  alts.forEach(function(a){ var c = compare(card.fr, a); if (!best || c.score > best.c.score) best = { text:a, c:c }; });
+  var now = performance.now();
+  var t0 = (mode === 'typed') ? (firstKeyAt != null ? firstKeyAt : now) : (firstSpeechAt != null ? firstSpeechAt : now);
+  var latency = Math.max(0, t0 - cardShownAt);
+  var sg = suggest(best.c.score, latency, best.c.nWords);
+  cur = { mode:mode, heard:best.text, alts:alts, score:best.c.score, latency:latency, total:now - cardShownAt,
+          micDelay: micReadyAt != null ? micReadyAt - cardShownAt : null, ops:best.c.ops, sg:sg, skipped:false };
+  showResult();
+}
+function skipCard(){
+  stopRec();
+  var now = performance.now();
+  cur = { mode:'skip', heard:'', alts:[], score:0, latency:now - cardShownAt, total:now - cardShownAt, micDelay:null, ops:[], sg:{ g:1, why:'вы отметили «Не знаю»' }, skipped:true };
+  showResult();
+}
+function showResult(){
+  $('listenArea').hidden = true;
+  $('resultArea').hidden = false;
+  $('answerText').textContent = card.fr;
+  var h = $('heardText'); h.textContent = '';
+  if (cur.skipped){ h.appendChild(el('span','lbl','Вы не ответили.')); }
+  else {
+    h.appendChild(el('span','lbl','Вы сказали:'));
+    cur.ops.forEach(function(op){
+      if (op.t === 'ok') h.appendChild(el('span','ok', op.h.w + ' '));
+      else if (op.t === 'sub' || op.t === 'extra') h.appendChild(el('span','bad', op.h.w + ' '));
+      else if (op.t === 'miss') { h.appendChild(el('span','miss', '[' + op.e.w + ']')); h.appendChild(document.createTextNode(' ')); }
+    });
+  }
+  $('mScore').textContent = cur.skipped ? '—' : Math.round(cur.score*100) + '%';
+  $('mLatency').textContent = cur.skipped ? '—' : fmtSec(cur.latency);
+  $('mTotal').textContent = fmtSec(cur.total);
+  $('reasonText').textContent = 'Предложено: ' + GRADE_NAMES[cur.sg.g] + ' — ' + cur.sg.why + '.';
+  setSel(cur.sg.g);
+  if (S.autoSpeak && !cur.skipped) speakRef();
+  else if (cur.skipped) speakRef();
+}
+function setSel(g){
+  sel = g;
+  var bs = document.querySelectorAll('.grade');
+  for (var i=0;i<bs.length;i++) bs[i].setAttribute('aria-pressed', String(Number(bs[i].getAttribute('data-g')) === g));
+}
+function speakRef(){
+  try {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(card.fr);
+    u.lang = S.lang; u.rate = 0.95;
+    var pre = S.lang.slice(0,2).toLowerCase();
+    var vs = speechSynthesis.getVoices() || [];
+    var v = vs.filter(function(x){ return x.lang.replace('_','-').toLowerCase() === S.lang.toLowerCase(); })[0] ||
+            vs.filter(function(x){ return x.lang.toLowerCase().indexOf(pre) === 0; })[0];
+    if (v) u.voice = v;
+    speechSynthesis.speak(u);
+  } catch(e){}
+}
+
+/* ---------- next / log ---------- */
+function commit(){
+  var entry = {
+    ts: new Date().toISOString(), ru: card.ru, expected: card.fr, heard: cur.heard, alts: cur.alts,
+    mode: cur.mode, score: Math.round(cur.score*100)/100, latencyMs: Math.round(cur.latency),
+    totalMs: Math.round(cur.total), micDelayMs: cur.micDelay != null ? Math.round(cur.micDelay) : null,
+    retries: retries, lang: S.lang, suggested: cur.sg.g, final: sel
+  };
+  var log = store.get('sluh.log', []); log.push(entry); if (log.length > 300) log = log.slice(-300);
+  store.set('sluh.log', log);
+  session.push(entry);
+  done++;
+  card.tries++;
+  if (sel === 1 && card.tries < 3) queue.push(card);
+  try { speechSynthesis.cancel(); } catch(e){}
+  nextCard();
+}
+function finishSession(){
+  var cnt = {1:0,2:0,3:0,4:0}, lat = 0, sc = 0, n = 0;
+  session.forEach(function(e){ cnt[e.final]++; if (e.mode !== 'skip'){ lat += e.latencyMs; sc += e.score; n++; } });
+  var box = $('sumGrades'); box.textContent = '';
+  [1,2,3,4].forEach(function(g){ var d=el('div'); d.appendChild(el('strong',null,String(cnt[g]))); d.appendChild(el('span',null,GRADE_NAMES[g])); box.appendChild(d); });
+  $('sumText').textContent = n ? ('Средняя точность — ' + Math.round(sc/n*100) + '%, среднее время до начала ответа — ' + fmtSec(lat/n) + '. Откройте журнал, скопируйте его и пришлите мне.') : 'Нет данных.';
+  show('screenDone');
+}
+function renderLog(){
+  var log = store.get('sluh.log', []);
+  var list = $('logList'); list.textContent = '';
+  $('logBox').hidden = true; $('logMsg').textContent = log.length ? ('Записей: ' + log.length) : 'Пока пусто. Пройдите хотя бы несколько карточек.';
+  log.slice().reverse().slice(0,40).forEach(function(e){
+    var d = el('div','logitem');
+    var b = el('div'); b.appendChild(el('b',null,e.expected)); d.appendChild(b);
+    d.appendChild(el('div','m', (e.heard ? '«' + e.heard + '»' : 'без ответа') + ' · ' + Math.round(e.score*100) + '% · ' + fmtSec(e.latencyMs) + ' · ' + GRADE_NAMES[e.suggested] + (e.suggested !== e.final ? ' → ' + GRADE_NAMES[e.final] : '')));
+    list.appendChild(d);
+  });
+}
+function copyLog(){
+  var log = store.get('sluh.log', []);
+  var text = JSON.stringify(log, null, 1);
+  var box = $('logBox'); box.value = text;
+  function fallback(){ box.hidden = false; box.focus(); box.select(); $('logMsg').textContent = 'Выделите текст ниже и скопируйте его вручную.'; }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ $('logMsg').textContent = 'Скопировано: ' + log.length + ' записей.'; }, fallback);
+    } else fallback();
+  } catch(e){ fallback(); }
+}
+
+/* ---------- sheets / settings ---------- */
+function openSheet(id){ $(id).hidden = false; }
+function closeSheet(id){ $(id).hidden = true; }
+function loadSettingsUI(){
+  $('sLang').value = S.lang; $('sEasy').value = S.easy; $('sGood').value = S.good;
+  $('sAgain').value = S.again; $('sHard').value = S.hard;
+  $('sLenient').checked = !!S.lenient; $('sAutoSpeak').checked = !!S.autoSpeak; $('sDeck').value = S.deck;
+}
+function saveSettings(){
+  function num(id, d, lo, hi){ var v = parseFloat($(id).value); return isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d; }
+  S.lang = $('sLang').value;
+  S.easy = num('sEasy', S.easy, 0.5, 30); S.good = num('sGood', S.good, 1, 60);
+  if (S.good < S.easy) S.good = S.easy;
+  S.again = num('sAgain', S.again, 10, 95); S.hard = num('sHard', S.hard, 20, 100);
+  if (S.hard < S.again) S.hard = S.again;
+  S.lenient = $('sLenient').checked; S.autoSpeak = $('sAutoSpeak').checked; S.deck = $('sDeck').value;
+  store.set('sluh.settings', S);
+  updateDeckInfo();
+  closeSheet('sheetSettings');
+}
+function updateDeckInfo(){
+  var n = parseDeck(S.deck).length;
+  $('btnStart').textContent = 'Начать (' + n + ' ' + (n % 10 === 1 && n % 100 !== 11 ? 'карточка' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'карточки' : 'карточек')) + ')';
+}
+
+/* ---------- mic test ---------- */
+function micTest(){
+  var out = $('micTestMsg'); out.className = 'hint'; out.textContent = 'Проверяю…';
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    out.className = 'hint err'; out.textContent = 'На этой странице браузер не даёт доступа к микрофону.'; return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio:true }).then(function(st){
+    st.getTracks().forEach(function(t){ t.stop(); });
+    out.textContent = 'Микрофон работает. Можно начинать.'; refreshDiag();
+  }, function(e){
+    out.className = 'hint err';
+    out.textContent = 'Микрофон недоступен: ' + (e && e.name ? e.name : 'ошибка') + (e && e.message ? ' (' + e.message + ')' : '');
+    refreshDiag();
+  });
+}
+
+/* ---------- wiring ---------- */
+$('btnMicTest').addEventListener('click', micTest);
+$('btnStart').addEventListener('click', startSession);
+$('btnAgain').addEventListener('click', startSession);
+$('btnOpenLog').addEventListener('click', function(){ renderLog(); openSheet('sheetLog'); });
+$('btnLog').addEventListener('click', function(){ renderLog(); openSheet('sheetLog'); });
+$('btnSettings').addEventListener('click', function(){ loadSettingsUI(); openSheet('sheetSettings'); });
+document.querySelectorAll('[data-close]').forEach(function(b){ b.addEventListener('click', function(){ closeSheet(b.getAttribute('data-close')); }); });
+$('btnSaveSettings').addEventListener('click', saveSettings);
+$('btnDeckReset').addEventListener('click', function(){ $('sDeck').value = DEFAULT_DECK; });
+$('btnCopyLog').addEventListener('click', copyLog);
+$('btnClearLog').addEventListener('click', function(){ store.set('sluh.log', []); renderLog(); });
+$('btnRetry').addEventListener('click', function(){ retries++; startListening(); });
+$('btnSkip').addEventListener('click', skipCard);
+$('btnMode').addEventListener('click', function(){ toggleTyped(); });
+$('btnTypeSubmit').addEventListener('click', function(){
+  var v = $('typeInput').value.trim(); if (!v) return;
+  finishAnswer([v], 'typed');
+});
+$('typeInput').addEventListener('input', function(){ if (firstKeyAt == null) firstKeyAt = performance.now(); });
+$('typeInput').addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); $('btnTypeSubmit').click(); } });
+document.querySelectorAll('.grade').forEach(function(b){ b.addEventListener('click', function(){ setSel(Number(b.getAttribute('data-g'))); }); });
+$('btnSpeak').addEventListener('click', speakRef);
+$('btnNext').addEventListener('click', commit);
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape'){ closeSheet('sheetSettings'); closeSheet('sheetLog'); }
+});
+
+updateDeckInfo();
+refreshDiag();
+})();
+</script>
+</body>
+</html>
