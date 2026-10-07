@@ -5,3 +5,7 @@ dist/
 
 # User lesson files (not published)
 apkg/
+
+# Personal Claude Code settings (launch.json is shared)
+.claude/settings.local.json
+.claude/*.local.*
